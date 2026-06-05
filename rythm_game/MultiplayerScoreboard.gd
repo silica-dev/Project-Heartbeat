@@ -8,9 +8,9 @@ func add_member(member: HeartbeatSteamLobby.MemberMetadata):
 	var scene: MultiplayerScoreboardItem = SCOREBOARD_ITEM_SCENE.instantiate()
 	add_child(scene)
 	scene.member = member
-	member.note_hit_received.connect(self._on_note_hit_received)
+	member.score_updated.connect(self._on_score_changed, CONNECT_DEFERRED)
 	
-func _on_note_hit_received(_rating: HBJudge.JUDGE_RATINGS, _score: int):
+func _on_score_changed(_score: int):
 	var member_items := get_children()
 	member_items.sort_custom(self._sort_member_items)
 	for i in get_children():

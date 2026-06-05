@@ -28,12 +28,16 @@ var member: HeartbeatSteamLobby.MemberMetadata:
 	set(val):
 		if member:
 			member.note_hit_received.disconnect(self._on_note_hit_received)
+			member.score_updated.disconnect(self._on_score_update_received)
 		member = val
 		member.note_hit_received.connect(self._on_note_hit_received)
+		member.score_updated.connect(self._on_score_update_received)
 		_queue_update()
 
-func _on_note_hit_received(rating: HBJudge.JUDGE_RATINGS, score: int):
+func _on_note_hit_received(rating: HBJudge.JUDGE_RATINGS):
 	update_rating(rating)
+
+func _on_score_update_received(score: int):
 	update_score(score)
 
 func update_rating(rating: HBJudge.JUDGE_RATINGS):

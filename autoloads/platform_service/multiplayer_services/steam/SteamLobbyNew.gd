@@ -28,6 +28,8 @@ enum RPCPacketType {
 	REQUEST_BEGIN_GAME_LOAD,
 	## Sent by each member to notify that they've hit a note
 	NOTE_HIT_UPDATE,
+	## Sent by each member to notify that the score has changed for any reason (hit, holds etc)
+	SCORE_UPDATE,
 	## Sent by each member once the game is finished
 	GAME_FINISHED,
 	## Sent by authority to let every one know someone has been kicked
@@ -119,7 +121,8 @@ class MemberInGameData:
 
 ## Per lobby member information
 class MemberMetadata:
-	signal note_hit_received(last_judgement: HBJudge.JUDGE_RATINGS, score: int)
+	signal note_hit_received(last_judgement: HBJudge.JUDGE_RATINGS)
+	signal score_updated(score: int)
 	signal result_received
 
 	var member: HBSteamFriend
@@ -284,9 +287,13 @@ func _on_begin_game_load_request_received(sender: HBSteamFriend):
 	rhythm_game_multiplayer_scene.lobby = self
 	rhythm_game_multiplayer_scene.start_game()
 	
-func _on_note_hit_received(sender: HBSteamFriend, judgement: HBJudge.JUDGE_RATINGS, score: int):
+func _on_score_update(sender: HBSteamFriend, score: int):
 	var member_meta := get_member_metadata(sender)
-	member_meta.note_hit_received.emit(judgement, score)
+	member_meta.score_updated.emit(score)
+	
+func _on_note_hit_received(sender: HBSteamFriend, judgement: HBJudge.JUDGE_RATINGS):
+	var member_meta := get_member_metadata(sender)
+	member_meta.note_hit_received.emit(judgement)
 	
 func _on_game_finished_received(sender: HBSteamFriend, result_dict: Dictionary):
 	var result := HBResult.deserialize(result_dict) as HBResult
@@ -424,8 +431,11 @@ func notify_game_finished(result: HBResult):
 		if not steam_lobby.set_lobby_joinable(true):
 			printerr("Failed to set lobby as joinable")
 
-func send_note_hit(judgement: HBJudge.JUDGE_RATINGS, score: int):
-	send_rpc_call(RPCPacketType.NOTE_HIT_UPDATE, [judgement, score])
+func send_score_update(new_score: int):
+	send_rpc_call(RPCPacketType.SCORE_UPDATE, [new_score])
+	
+func send_note_hit(judgement: HBJudge.JUDGE_RATINGS):
+	send_rpc_call(RPCPacketType.NOTE_HIT_UPDATE, [judgement])
 
 func kick_member(member: MemberMetadata):
 	send_rpc_call(RPCPacketType.KICK_MEMBER, [member.member.steam_id])
@@ -459,6 +469,8 @@ func _init(_steam_lobby: HBSteamLobby) -> void:
 
 	rpc_packet_types[RPCPacketType.NOTE_HIT_UPDATE].callback = self._on_note_hit_received
 	rpc_packet_types[RPCPacketType.NOTE_HIT_UPDATE].rpc_privileges = RPCPrivileges.FROM_ANYONE
+	rpc_packet_types[RPCPacketType.SCORE_UPDATE].callback = self._on_score_update
+	rpc_packet_types[RPCPacketType.SCORE_UPDATE].rpc_privileges = RPCPrivileges.FROM_ANYONE
 	rpc_packet_types[RPCPacketType.GAME_FINISHED].rpc_privileges = RPCPrivileges.FROM_ANYONE
 	rpc_packet_types[RPCPacketType.GAME_FINISHED].callback = self._on_game_finished_received
 	rpc_packet_types[RPCPacketType.KICK_MEMBER].callback = self._on_member_kicked

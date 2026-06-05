@@ -1,6 +1,6 @@
 extends Control
 
-@onready var rhythm_game_controller = get_node("RhythmGame")
+@onready var rhythm_game_controller: HBRhythmGameController = get_node("RhythmGame")
 var lobby: HeartbeatSteamLobby: set = set_lobby
 
 const LOG_NAME = "RhythmGameMultiplayer"
@@ -36,8 +36,9 @@ func _ready():
 	rhythm_game_controller.pause_disabled = true
 	rhythm_game_controller.game.health_system_enabled = false
 	rhythm_game_controller.prevent_showing_results = true
-	rhythm_game_controller.game.connect("note_judged", self._on_note_judged)
-	rhythm_game_controller.connect("fade_out_finished", self._on_fade_out_finished)
+	rhythm_game_controller.game.note_judged.connect(self._on_note_judged)
+	rhythm_game_controller.game.score_added.connect(self._on_score_added)
+	rhythm_game_controller.fade_out_finished.connect(self._on_fade_out_finished)
 	rhythm_game_controller.disable_restart()
 	rhythm_game_controller.allow_modifiers = false
 	rhythm_game_controller.disable_intro_skip = false
@@ -91,7 +92,10 @@ func _on_song_assets_loaded(assets: SongAssetLoader.AssetLoadToken):
 			member.in_game_data.updated.connect(_try_start)
 
 func _on_note_judged(judgement_info):
-	lobby.send_note_hit(judgement_info.judgement, rhythm_game_controller.game.result.score)
+	lobby.send_note_hit(judgement_info.judgement)
+	
+func _on_score_added(_score_added: int):
+	lobby.send_score_update(rhythm_game_controller.game.result.score)
 	
 var MainMenu = load("res://menus/MainMenu3D.tscn")
 
