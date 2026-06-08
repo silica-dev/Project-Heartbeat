@@ -37,6 +37,7 @@ const EDITOR_MODULES_DIR = "res://tools/editor/editor_modules"
 @onready var first_time_message_dialog := get_node("Popups/FirstTimeMessageDialog")
 @onready var info_label = get_node("VBoxContainer/VSplitContainer/EditorTimelineContainer/VBoxContainer/Panel/MarginContainer/HBoxContainer/HBoxContainer/InfoLabel")
 @onready var waveform_button = get_node("VBoxContainer/VSplitContainer/HSplitContainer/HSplitContainer/Preview/GamePreview/Node2D/WidgetArea/Panel/HBoxContainer/WaveformButton")
+@onready var sfx_button = get_node("VBoxContainer/VSplitContainer/HSplitContainer/HSplitContainer/Preview/GamePreview/Node2D/WidgetArea/Panel/HBoxContainer/SfxButton")
 @onready var timeline_snap_button = get_node("VBoxContainer/VSplitContainer/EditorTimelineContainer/VBoxContainer/Panel/MarginContainer/HBoxContainer/TimelineGridSnapButton")
 @onready var show_bg_button = get_node("VBoxContainer/VSplitContainer/HSplitContainer/HSplitContainer/Preview/GamePreview/Node2D/WidgetArea/Panel/HBoxContainer/ShowBGButton")
 @onready var show_video_button = get_node("VBoxContainer/VSplitContainer/HSplitContainer/HSplitContainer/Preview/GamePreview/Node2D/WidgetArea/Panel/HBoxContainer/ShowVideoButton")
@@ -996,6 +997,8 @@ func paste(time: int):
 		undo_redo.create_action("Paste timing points")
 		message_shower._show_notification("Paste notes")
 		
+		var note_cache := cache_notes_at_time()
+		
 		var min_point = copied_points[0].item.data as HBTimingPoint
 		for copy in copied_points:
 			var timing_point := copy.item.data as HBTimingPoint
@@ -1020,7 +1023,7 @@ func paste(time: int):
 				timing_point.end_time = timing_point.time + copy.item.data.get_duration()
 			
 			if timing_point is HBBaseNote and UserSettings.user_settings.editor_auto_place:
-				timing_point = autoplace(timing_point)
+				timing_point = autoplace(timing_point, false, [], note_cache)
 			
 			var new_item = timing_point.get_timeline_item() as EditorTimelineItem
 			
@@ -1044,7 +1047,9 @@ func paste(time: int):
 		undo_redo.add_do_method(self.sort_groups)
 		
 		undo_redo.commit_action()
-		check_for_multi_changes(multi_check_times)
+		
+		var item_cache := cache_items_at_time()
+		check_for_multi_changes(multi_check_times, item_cache)
 
 func delete_selected():
 	if selected.size() > 0:
@@ -1117,7 +1122,7 @@ func is_slide_chain(note: HBTimingPoint):
 	
 	return false
 
-func check_for_multi_changes(times: Array, item_cache: Array = []):
+func check_for_multi_changes(times: Array, item_cache: Dictionary = {}):
 	if UserSettings.user_settings.editor_auto_multi:
 		# Merge action with the previous one
 		undo_redo.create_action("MERGE")
@@ -1125,6 +1130,10 @@ func check_for_multi_changes(times: Array, item_cache: Array = []):
 		for time in times:
 			var items_at_time := []
 			if item_cache:
+				if not time in item_cache:
+					# early continue: no notes in full item cache, nothing to do
+					continue
+				
 				items_at_time = item_cache[time]
 			else:
 				items_at_time = get_items_at_time(time)
@@ -1299,15 +1308,12 @@ func cache_notes_at_time() -> Dictionary:
 	
 	return cache
 
-func cache_items_at_time() -> Array:
-	# Initialize our cache
-	var cache := []
-	cache.resize(int(get_song_length() * 1000.0))
-	cache.fill([])
+func cache_items_at_time() -> Dictionary:
+	var cache := {} 
 	
 	for item in get_timeline_items():
-		if item.data is HBTimingPoint and item.data.time <= int(get_song_length() * 1000.0):
-			if not cache[item.data.time]:
+		if item.data is HBTimingPoint:
+			if not item.data.time in cache:
 				cache[item.data.time] = [item]
 			else:
 				cache[item.data.time].append(item)
@@ -1464,6 +1470,7 @@ func load_settings(settings: HBPerSongEditorSettings, skip_settings_menu=false):
 
 func update_user_settings():
 	waveform_button.button_pressed = UserSettings.user_settings.editor_show_waveform
+	sfx_button.button_pressed = rhythm_game.sfx_enabled
 	
 	grid_snap_button.button_pressed = UserSettings.user_settings.editor_grid_snap
 	show_grid_button.button_pressed = UserSettings.user_settings.editor_show_grid
@@ -1569,7 +1576,12 @@ func from_chart(chart: HBChart, ignore_settings = false, importing = false, in_p
 	for layer in chart.layers:
 		var layer_scene
 		var layer_n
+		
 		layer_scene = timeline.find_layer_by_name(layer.name)
+		if not layer_scene:
+			print("ERROR: Could not find corresponding editor layer scene for chart layer \"%s\". Some notes may be lost." % layer.name)
+			continue
+		
 		layer_n = timeline.get_layers().find(layer_scene)
 		
 		for item_d in layer.timing_points:
@@ -2270,11 +2282,13 @@ func autoplace(data: HBBaseNote, force: bool = false, selected_data: Array = [],
 		time_as_eight = fmod(15.0 - abs(time_as_eight), 15.0)
 	
 	var notes_at_time := []
-	if data.time in times_cache:
-		notes_at_time = times_cache[data.time]
+	if times_cache:
+		if data.time in times_cache:
+			notes_at_time = times_cache[data.time]
+		else:
+			notes_at_time = []
 	else:
 		notes_at_time = get_notes_at_time(data.time)
-		times_cache[data.time] = notes_at_time
 	
 	if not selected_data:
 		for item in selected:
@@ -2518,12 +2532,15 @@ func get_speed_changes() -> Array:
 	return speed_changes
 
 func get_time_as_eight(time: int) -> float:
-	if not eight_map.times:
+	if not eight_map.times or eight_map.times.size() < 2:
+		# We need at least 2 eights to properly interpolate between them. 
+		# Unlikely to happen in reality, as _on_timing_information_changed
+		# adds at least 2 eight indexes per timing change.
 		return 0.0
 	
 	var idx: int = eight_map.times.bsearch(time)
 	
-	if eight_map.times[idx] == time:
+	if idx in eight_map and eight_map.times[idx] == time:
 		return eight_map.eights[idx]
 	
 	var lower_bound = idx - 1

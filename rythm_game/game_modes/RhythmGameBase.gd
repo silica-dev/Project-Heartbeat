@@ -620,7 +620,7 @@ func _process_game(_delta):
 
 func get_latency_compensation_msec() -> int:
 	var latency_compensation = UserSettings.user_settings.lag_compensation
-	if current_song.id in UserSettings.user_settings.per_song_settings:
+	if current_song.id in UserSettings.user_settings.per_song_settings and game_mode == GAME_MODE.NORMAL:
 		latency_compensation += UserSettings.user_settings.per_song_settings[current_song.id].lag_compensation
 	return latency_compensation
 			
@@ -979,9 +979,9 @@ func set_timing_changes(p_timing_changes):
 func update_bpm_map():
 	bpm_map.clear()
 	
-	if timing_changes:
+	if timing_changes and timing_changes.size() != 0:
 		bpm_map[0] = timing_changes[0].bpm
-	elif bpm_changes and bpm_changes[0].usage == HBBPMChange.USAGE_TYPES.FIXED_BPM:
+	elif bpm_changes and bpm_changes.size() != 0 and bpm_changes[0].usage == HBBPMChange.USAGE_TYPES.FIXED_BPM:
 		bpm_map[0] = bpm_changes[0].bpm
 	else:
 		bpm_map[0] = 0
@@ -990,7 +990,7 @@ func update_bpm_map():
 	speed_changes.append_array(timing_changes)
 	speed_changes.sort_custom(Callable(self, "_sort_notes_by_time"))
 	
-	var current_bpm = timing_changes[0].bpm if timing_changes else 120
+	var current_bpm = timing_changes[0].bpm if timing_changes and timing_changes.size() != 0 else 120
 	var current_bpm_change := HBBPMChange.new()
 	current_bpm_change.speed_factor = 100
 	for event in speed_changes:
