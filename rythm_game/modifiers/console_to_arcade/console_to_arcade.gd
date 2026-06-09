@@ -29,7 +29,7 @@ func _preprocess_timing_points(points: Array) -> Array:
 			# Doubles to singles
 			points[i] = point.convert_to_type("Note")
 		elif point is HBSustainNote and modifier_settings.sustain_mode != HBConsoleToArcadeModifierSettings.SUSTAIN_MODE.NO_CHANGE:
-			# Sustains to two notes
+			# Sustains to singles
 			var pt := point.convert_to_type("Note") as HBNoteData
 			points[i] = pt
 			match modifier_settings.sustain_mode:
